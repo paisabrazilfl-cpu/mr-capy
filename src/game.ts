@@ -245,8 +245,18 @@ class MainScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private livesText!: Phaser.GameObjects.Text;
   private gameEnded = false;
+  private paused = false;
+  private pauseText?: Phaser.GameObjects.Text;
   private invulnUntil = 0;
   private facing: 1 | -1 = 1;
+
+  // Responsive-jump helpers (in ms). Coyote time lets you jump just after
+  // walking off a ledge; the buffer lets a slightly-early press still fire.
+  private static readonly COYOTE_MS = 90;
+  private static readonly JUMP_BUFFER_MS = 110;
+  private lastGroundedAt = -Infinity;
+  private jumpPressedAt = -Infinity;
+  private jumpWasDown = false;
 
   constructor() {
     super('main');
@@ -260,7 +270,11 @@ class MainScene extends Phaser.Scene {
     this.score = 0;
     this.lives = 3;
     this.gameEnded = false;
+    this.paused = false;
     this.invulnUntil = 0;
+    this.lastGroundedAt = -Infinity;
+    this.jumpPressedAt = -Infinity;
+    this.jumpWasDown = false;
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
@@ -397,6 +411,33 @@ class MainScene extends Phaser.Scene {
       jump: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
     };
     this.input.keyboard!.on('keydown-R', () => this.scene.restart());
+    this.input.keyboard!.on('keydown-P', () => this.togglePause());
+  }
+
+  private togglePause(): void {
+    if (this.gameEnded) return;
+    this.paused = !this.paused;
+    if (this.paused) {
+      this.physics.pause();
+      this.player.anims.pause();
+      this.pauseText = this.add
+        .text(WIDTH / 2, HEIGHT / 2, 'PAUSED\n\npress P to resume', {
+          fontFamily: 'monospace',
+          fontSize: '40px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 6,
+          align: 'center',
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(30);
+    } else {
+      this.physics.resume();
+      this.player.anims.resume();
+      this.pauseText?.destroy();
+      this.pauseText = undefined;
+    }
   }
 
   private createHud(): void {
@@ -508,8 +549,8 @@ class MainScene extends Phaser.Scene {
       .setDepth(21);
   }
 
-  update(): void {
-    if (this.gameEnded) return;
+  update(time: number): void {
+    if (this.gameEnded || this.paused) return;
 
     // Fell into a pit.
     if (this.player.y > HEIGHT + 40) {
@@ -520,10 +561,16 @@ class MainScene extends Phaser.Scene {
     }
 
     const onGround = this.player.body!.blocked.down || this.player.body!.touching.down;
+    if (onGround) this.lastGroundedAt = time;
+
     const left = this.cursors.left.isDown || this.keys.left.isDown;
     const right = this.cursors.right.isDown || this.keys.right.isDown;
-    const jump =
+    const jumpDown =
       this.cursors.up.isDown || this.cursors.space.isDown || this.keys.jump.isDown;
+
+    // Record the moment of a fresh jump press (rising edge) for buffering.
+    if (jumpDown && !this.jumpWasDown) this.jumpPressedAt = time;
+    this.jumpWasDown = jumpDown;
 
     if (left && !right) {
       this.player.setVelocityX(-200);
@@ -537,8 +584,14 @@ class MainScene extends Phaser.Scene {
       this.player.setVelocityX(0);
     }
 
-    if (jump && onGround) {
+    // Jump if a recent press (buffer) coincides with recent ground contact
+    // (coyote time). This makes controls feel responsive without double jumps.
+    const buffered = time - this.jumpPressedAt <= MainScene.JUMP_BUFFER_MS;
+    const coyote = time - this.lastGroundedAt <= MainScene.COYOTE_MS;
+    if (buffered && coyote) {
       this.player.setVelocityY(-560);
+      this.jumpPressedAt = -Infinity;
+      this.lastGroundedAt = -Infinity;
     }
 
     if (!onGround) {
@@ -581,6 +634,11 @@ const config: Phaser.Types.Core.GameConfig = {
   height: HEIGHT,
   backgroundColor: '#6ec6ff',
   pixelArt: false,
+  // Mount inside the #game container so the canvas renders within the visible
+  // page area instead of being appended to <body> below the fold. Falls back to
+  // <body> if the element is absent (keeps the game robust if the shell HTML
+  // changes).
+  parent: document.getElementById('game') ? 'game' : undefined,
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 1200 }, debug: false },
@@ -588,6 +646,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: WIDTH,
+    height: HEIGHT,
   },
   scene: [MainScene],
 };

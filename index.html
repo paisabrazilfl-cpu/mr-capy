@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b2430" />
+  <meta name="description" content="Mr. Capy — a Mario-style platformer starring a capybara." />
   <title>Mr. Capy</title>
   <style>
     html, body {
@@ -18,24 +20,39 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      height: 100vh;
+      gap: 8px;
+      padding: 8px 0;
+      box-sizing: border-box;
+    }
+    header { flex: 0 0 auto; text-align: center; }
+    /* Phaser mounts its canvas inside #game; it fills the remaining height
+       and stays centered so the canvas never renders below the fold. */
+    #game {
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
       justify-content: center;
-      height: 100%;
-      gap: 12px;
     }
     h1 {
-      margin: 8px 0 0;
+      margin: 0;
       letter-spacing: 2px;
       color: #ffd54a;
       text-shadow: 2px 2px 0 #000;
     }
-    .hint { margin: 0 0 4px; opacity: 0.75; font-size: 14px; }
+    .hint { margin: 4px 0 0; opacity: 0.75; font-size: 13px; }
     canvas { border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
   </style>
 </head>
 <body>
   <div id="app">
-    <h1>🦫 Mr. Capy</h1>
-    <p class="hint">Arrows / A&nbsp;D to move &nbsp;•&nbsp; Up / W / Space to jump &nbsp;•&nbsp; Stomp enemies &nbsp;•&nbsp; R to restart</p>
+    <header>
+      <h1>🦫 Mr. Capy</h1>
+      <p class="hint">Arrows / A&nbsp;D move &nbsp;•&nbsp; Up / W / Space jump &nbsp;•&nbsp; Stomp enemies &nbsp;•&nbsp; P pause &nbsp;•&nbsp; R restart</p>
+    </header>
+    <div id="game"></div>
   </div>
   <script type="module" src="/src/game.ts"></script>
 </body>

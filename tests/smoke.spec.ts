@@ -26,6 +26,15 @@ test('Mr. Capy boots, renders a canvas, and runs without console errors', async 
   expect(box?.width ?? 0).toBeGreaterThan(0);
   expect(box?.height ?? 0).toBeGreaterThan(0);
 
+  // Regression guard: the canvas must be inside the viewport, not pushed below
+  // the fold (the bug where Phaser appended it to <body> after a full-height
+  // div, leaving players staring at just the title).
+  const viewport = page.viewportSize();
+  if (viewport && box) {
+    expect(box.y).toBeLessThan(viewport.height);
+    expect(box.y + box.height).toBeGreaterThan(0);
+  }
+
   // The run loop should be advancing frames.
   const firstFrame = await page.evaluate(
     () => (window as unknown as { game?: { loop?: { frame: number } } }).game?.loop?.frame ?? -1,
