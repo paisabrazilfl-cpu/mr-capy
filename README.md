@@ -58,9 +58,23 @@ npm run test:e2e
 
 ## Deployment (Render)
 
-`render.yaml` defines a static-site deploy. Connect the repo in the
-[Render dashboard](https://render.com/) — no API tokens belong in source. Render
-runs `npm ci && npm run build` and serves `./dist`.
+Two paths, both keep secrets out of source:
+
+**1. Dashboard (simplest).** `render.yaml` defines a static-site deploy. Connect
+the repo in the [Render dashboard](https://dashboard.render.com/) — Render reads
+`render.yaml`, runs `npm ci && npm run build`, and serves `./dist`.
+
+**2. Automated via GitHub Actions.** `.github/workflows/deploy.yml` triggers a
+Render deploy on every push to `main`. It requires two repository secrets
+(Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| ------ | ----- |
+| `RENDER_API_KEY` | A Render API key (rotate immediately if ever exposed) |
+| `RENDER_SERVICE_ID` | The target service id, e.g. `srv-xxxxxxxx` |
+
+The workflow fails loudly if either secret is missing — it never deploys with
+hard-coded or pasted credentials.
 
 ## Tech
 
