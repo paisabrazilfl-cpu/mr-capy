@@ -592,4 +592,7 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [MainScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Expose the instance for smoke tests / debugging.
+(window as unknown as { game: Phaser.Game }).game = game;

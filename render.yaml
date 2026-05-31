@@ -1,0 +1,13 @@
+# Render static-site deploy for the Vite build.
+# Connect this repo in the Render dashboard (no API tokens in source).
+services:
+  - type: web
+    name: mr-capy
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
