@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mr. Capy</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #1b2430;
+      font-family: monospace, sans-serif;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+    }
+    h1 {
+      margin: 8px 0 0;
+      letter-spacing: 2px;
+      color: #ffd54a;
+      text-shadow: 2px 2px 0 #000;
+    }
+    .hint { margin: 0 0 4px; opacity: 0.75; font-size: 14px; }
+    canvas { border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>🦫 Mr. Capy</h1>
+    <p class="hint">Arrows / A&nbsp;D to move &nbsp;•&nbsp; Up / W / Space to jump &nbsp;•&nbsp; Stomp enemies &nbsp;•&nbsp; R to restart</p>
+  </div>
+  <script type="module" src="/src/game.ts"></script>
+</body>
+</html>

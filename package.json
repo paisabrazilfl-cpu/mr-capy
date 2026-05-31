@@ -1,16 +1,18 @@
 {
   "name": "mr-capy",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "phaser": "^3.80.1"
+    "phaser": "^3.90.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
-    "vite": "^5.0.10"
+    "typescript": "^5.9.3",
+    "vite": "^7.1.13"
   }
 }
