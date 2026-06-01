@@ -15,27 +15,63 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      /* Sky-toned gradient so the FIT letterbox bars blend with the game's
-         own sky instead of showing a dark dead zone on tall/wide screens. */
       background: linear-gradient(180deg, #6ec6ff 0%, #9ad9ff 55%, #bfe9ff 100%);
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       -webkit-tap-highlight-color: transparent;
       touch-action: none;
     }
-    /* The game fills the entire viewport on every device; Phaser's FIT scale
-       keeps the 4:3 play area centered and crisp, auto-resizing on rotate. */
-    #game {
+    /* Vertical stack: the game scenario on top, control bar underneath. */
+    #app {
       position: fixed;
       inset: 0;
-      width: 100vw;
-      height: 100vh;
-      height: 100dvh; /* avoids mobile URL-bar jump where supported */
+      display: flex;
+      flex-direction: column;
+    }
+    #game {
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     #game canvas { display: block; touch-action: none; }
-    /* Lightweight pre-boot loader shown until Phaser mounts. */
+
+    /* Control bar sits BELOW the canvas (hidden by default; shown on touch). */
+    #controls {
+      flex: 0 0 auto;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom));
+      background: rgba(13, 43, 69, 0.92);
+      border-top: 2px solid rgba(255, 255, 255, 0.15);
+      user-select: none;
+    }
+    #controls .group { display: flex; gap: 12px; }
+    .btn {
+      width: 76px;
+      height: 76px;
+      border-radius: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      font-size: 34px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      transition: transform 0.05s ease, background 0.1s ease;
+    }
+    .btn.jump {
+      width: 96px;
+      background: rgba(105, 240, 174, 0.18);
+      border-color: rgba(105, 240, 174, 0.5);
+    }
+    .btn.active { background: rgba(255, 255, 255, 0.32); transform: scale(0.94); }
+
     #loader {
       position: fixed;
       inset: 0;
@@ -55,7 +91,18 @@
   </style>
 </head>
 <body>
-  <div id="game"></div>
+  <div id="app">
+    <div id="game"></div>
+    <div id="controls">
+      <div class="group">
+        <div class="btn" id="btn-left" aria-label="Move left">◀</div>
+        <div class="btn" id="btn-right" aria-label="Move right">▶</div>
+      </div>
+      <div class="group">
+        <div class="btn jump" id="btn-jump" aria-label="Jump">⤒</div>
+      </div>
+    </div>
+  </div>
   <div id="loader"><div class="capy">🦫</div><div>Loading Mr.&nbsp;Capy…</div></div>
   <script type="module" src="/src/game.ts"></script>
 </body>

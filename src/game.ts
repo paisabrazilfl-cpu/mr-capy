@@ -231,25 +231,27 @@ const LEVEL: LevelData = {
 };
 
 /**
- * Procedurally-generated relaxing audio via the Web Audio API — no audio files
- * required, matching the project's zero-assets design. Plays a slow, gentle
- * chord progression (soft sine pads) plus light chimes. Must be started from a
- * user gesture to satisfy browser autoplay policies.
+ * Procedurally-generated happy chiptune via the Web Audio API — no audio files
+ * required, matching the project's zero-assets design. A bouncy major-key
+ * melody plays over a cheerful bassline. Must be started from a user gesture to
+ * satisfy browser autoplay policies.
  */
 class AudioManager {
   private ctx: AudioContext;
   private master: GainNode;
   private muted = false;
   private started = false;
-  private chordIndex = 0;
+  private step = 0;
 
-  // Calm, consonant progression (Cmaj7 → Amin7 → Fmaj7 → Gmaj7), low octaves.
-  private readonly chords: number[][] = [
-    [130.81, 164.81, 196.0, 246.94],
-    [110.0, 130.81, 164.81, 196.0],
-    [87.31, 110.0, 130.81, 164.81],
-    [98.0, 123.47, 146.83, 196.0],
+  // Upbeat melody in C major (Hz), 16 eighth-notes; 0 = rest. Cheerful and
+  // sing-song, looping over a I–V–vi–IV feel.
+  private readonly melody = [
+    523.25, 659.25, 783.99, 659.25, 523.25, 587.33, 659.25, 0,
+    698.46, 659.25, 587.33, 523.25, 587.33, 659.25, 523.25, 0,
   ];
+  // Simple bouncing bass, one note per two melody steps (root motion C-G-A-F).
+  private readonly bass = [130.81, 196.0, 220.0, 174.61];
+  private readonly stepMs = 200; // ~150 BPM eighth-notes — lively
 
   constructor() {
     const Ctor =
@@ -267,49 +269,47 @@ class AudioManager {
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     if (this.started) return;
     this.started = true;
-    this.playChord();
-    window.setInterval(() => this.playChord(), 4000);
+    this.tick();
+    window.setInterval(() => this.tick(), this.stepMs);
   }
 
-  private playChord(): void {
+  private tick(): void {
     if (this.muted || this.ctx.state !== 'running') return;
-    const chord = this.chords[this.chordIndex % this.chords.length];
-    this.chordIndex++;
-    const now = this.ctx.currentTime;
-    for (const freq of chord) {
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(0.22, now + 1.4); // soft swell
-      gain.gain.linearRampToValueAtTime(0.0001, now + 3.9); // gentle fade
-      gain.connect(this.master);
-      // Two slightly-detuned sines for a warm pad.
-      for (const detune of [-5, 5]) {
-        const osc = this.ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        osc.detune.value = detune;
-        osc.connect(gain);
-        osc.start(now);
-        osc.stop(now + 4);
-      }
+    const i = this.step % this.melody.length;
+
+    // Lead melody — bright triangle pluck.
+    const note = this.melody[i];
+    if (note > 0) this.pluck(note, 'triangle', 0.18, this.stepMs / 1000);
+
+    // Bouncing bass on every other step — round sine.
+    if (i % 2 === 0) {
+      const b = this.bass[(i / 2) % this.bass.length];
+      this.pluck(b, 'sine', 0.22, (this.stepMs * 2) / 1000);
     }
+
+    this.step++;
+  }
+
+  /** A short plucked note with a quick attack and gentle decay. */
+  private pluck(freq: number, type: OscillatorType, vol: number, dur: number): void {
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(vol, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.9);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(now);
+    osc.stop(now + dur);
   }
 
   /** A short, pleasant chime (e.g. coin pickup). */
   chime(freq = 880): void {
     if (this.muted || this.ctx.state !== 'running') return;
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
-    osc.connect(gain);
-    gain.connect(this.master);
-    osc.start(now);
-    osc.stop(now + 0.3);
+    this.pluck(freq, 'triangle', 0.25, 0.3);
   }
 
   toggleMute(): boolean {
@@ -547,65 +547,40 @@ class MainScene extends Phaser.Scene {
    * (harmless with a mouse) but only shown when the device reports touch.
    */
   private createTouchControls(): void {
+    // Controls live in a DOM bar BELOW the canvas (#controls in index.html),
+    // not painted over the play area. Shown only on touch devices.
     const hasTouch = this.sys.game.device.input.touch;
-    if (!hasTouch) return;
+    const bar = document.getElementById('controls');
+    if (!bar) return;
+    if (!hasTouch) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'flex';
 
-    const R = 46; // button radius
-    const margin = 24;
-    const bottom = HEIGHT - margin - R;
-
-    const makeButton = (
-      x: number,
-      label: string,
-      onDown: () => void,
-      onUp: () => void,
-    ): void => {
-      // Translucent overlay so the player/level reads clearly through the
-      // controls (standard mobile convention) instead of looking buried.
-      const circle = this.add
-        .circle(x, bottom, R, 0xffffff, 0.16)
-        .setScrollFactor(0)
-        .setDepth(40)
-        .setStrokeStyle(2, 0xffffff, 0.4)
-        .setInteractive({ useHandCursor: true });
-      this.add
-        .text(x, bottom, label, {
-          fontFamily: 'monospace',
-          fontSize: '32px',
-          color: '#ffffff',
-        })
-        .setOrigin(0.5)
-        .setAlpha(0.7)
-        .setScrollFactor(0)
-        .setDepth(41);
-
-      // pointerup/out also fire if the finger slides off the button.
-      circle.on('pointerdown', onDown);
-      circle.on('pointerup', onUp);
-      circle.on('pointerout', onUp);
+    const bind = (id: string, set: (v: boolean) => void): void => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const down = (e: Event) => {
+        e.preventDefault();
+        set(true);
+        el.classList.add('active');
+      };
+      const up = (e: Event) => {
+        e.preventDefault();
+        set(false);
+        el.classList.remove('active');
+      };
+      // Pointer events cover touch + mouse; up/cancel/leave all release.
+      el.addEventListener('pointerdown', down);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+      el.addEventListener('pointerleave', up);
     };
 
-    makeButton(
-      margin + R,
-      '◀',
-      () => (this.touch.left = true),
-      () => (this.touch.left = false),
-    );
-    makeButton(
-      margin + R * 3 + 16,
-      '▶',
-      () => (this.touch.right = true),
-      () => (this.touch.right = false),
-    );
-    makeButton(
-      WIDTH - margin - R,
-      '⤒',
-      () => (this.touch.jump = true),
-      () => (this.touch.jump = false),
-    );
-
-    // Multi-touch so a player can hold a direction and tap jump together.
-    this.input.addPointer(2);
+    bind('btn-left', (v) => (this.touch.left = v));
+    bind('btn-right', (v) => (this.touch.right = v));
+    bind('btn-jump', (v) => (this.touch.jump = v));
 
     // Clear held buttons if the game loses focus mid-press.
     this.game.events.on(Phaser.Core.Events.BLUR, () => {
