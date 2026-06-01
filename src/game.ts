@@ -230,6 +230,103 @@ const LEVEL: LevelData = {
   ],
 };
 
+/**
+ * Procedurally-generated relaxing audio via the Web Audio API — no audio files
+ * required, matching the project's zero-assets design. Plays a slow, gentle
+ * chord progression (soft sine pads) plus light chimes. Must be started from a
+ * user gesture to satisfy browser autoplay policies.
+ */
+class AudioManager {
+  private ctx: AudioContext;
+  private master: GainNode;
+  private muted = false;
+  private started = false;
+  private chordIndex = 0;
+
+  // Calm, consonant progression (Cmaj7 → Amin7 → Fmaj7 → Gmaj7), low octaves.
+  private readonly chords: number[][] = [
+    [130.81, 164.81, 196.0, 246.94],
+    [110.0, 130.81, 164.81, 196.0],
+    [87.31, 110.0, 130.81, 164.81],
+    [98.0, 123.47, 146.83, 196.0],
+  ];
+
+  constructor() {
+    const Ctor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    this.ctx = new Ctor();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.16;
+    this.master.connect(this.ctx.destination);
+  }
+
+  /** Begin the music loop (idempotent). Call from a user gesture. */
+  start(): void {
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.started) return;
+    this.started = true;
+    this.playChord();
+    window.setInterval(() => this.playChord(), 4000);
+  }
+
+  private playChord(): void {
+    if (this.muted || this.ctx.state !== 'running') return;
+    const chord = this.chords[this.chordIndex % this.chords.length];
+    this.chordIndex++;
+    const now = this.ctx.currentTime;
+    for (const freq of chord) {
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.22, now + 1.4); // soft swell
+      gain.gain.linearRampToValueAtTime(0.0001, now + 3.9); // gentle fade
+      gain.connect(this.master);
+      // Two slightly-detuned sines for a warm pad.
+      for (const detune of [-5, 5]) {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.detune.value = detune;
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 4);
+      }
+    }
+  }
+
+  /** A short, pleasant chime (e.g. coin pickup). */
+  chime(freq = 880): void {
+    if (this.muted || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  toggleMute(): boolean {
+    this.muted = !this.muted;
+    this.master.gain.value = this.muted ? 0 : 0.16;
+    if (!this.muted) this.start();
+    return this.muted;
+  }
+
+  get isMuted(): boolean {
+    return this.muted;
+  }
+}
+
+// Single audio instance shared across scene restarts (avoids stacked loops).
+let audio: AudioManager | undefined;
+
 class MainScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -293,9 +390,33 @@ class MainScene extends Phaser.Scene {
     this.createInput();
     this.createHud();
     this.createTouchControls();
+    this.createAudio();
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(180, 120);
+  }
+
+  /** Create/reuse the shared audio manager, start it on first input, and add a
+   *  mute toggle to the HUD. */
+  private createAudio(): void {
+    if (!audio) audio = new AudioManager();
+    const mgr = audio;
+    (window as unknown as { audio?: AudioManager }).audio = mgr;
+
+    // Browser autoplay policy: only resume on a genuine user gesture.
+    this.input.once('pointerdown', () => mgr.start());
+    this.input.keyboard!.once('keydown', () => mgr.start());
+
+    const muteBtn = this.add
+      .text(WIDTH - 22, 28, mgr.isMuted ? '🔇' : '🔊', { fontSize: '26px' })
+      .setOrigin(1, 0.5)
+      .setScrollFactor(0)
+      .setDepth(41)
+      .setInteractive({ useHandCursor: true });
+    muteBtn.on('pointerdown', () => {
+      const muted = mgr.toggleMute();
+      muteBtn.setText(muted ? '🔇' : '🔊');
+    });
   }
 
   private createBackground(): void {
@@ -439,19 +560,22 @@ class MainScene extends Phaser.Scene {
       onDown: () => void,
       onUp: () => void,
     ): void => {
+      // Translucent overlay so the player/level reads clearly through the
+      // controls (standard mobile convention) instead of looking buried.
       const circle = this.add
-        .circle(x, bottom, R, 0x000000, 0.32)
+        .circle(x, bottom, R, 0xffffff, 0.16)
         .setScrollFactor(0)
         .setDepth(40)
-        .setStrokeStyle(3, 0xffffff, 0.6)
+        .setStrokeStyle(2, 0xffffff, 0.4)
         .setInteractive({ useHandCursor: true });
       this.add
         .text(x, bottom, label, {
           fontFamily: 'monospace',
-          fontSize: '34px',
+          fontSize: '32px',
           color: '#ffffff',
         })
         .setOrigin(0.5)
+        .setAlpha(0.7)
         .setScrollFactor(0)
         .setDepth(41);
 
@@ -545,6 +669,7 @@ class MainScene extends Phaser.Scene {
     coin.disableBody(true, true);
     this.score += 1;
     this.updateHud();
+    audio?.chime(880);
   };
 
   private hitEnemy: Phaser.Types.Physics.Arcade.ArcadePhysicsCallback = (_p, e) => {
@@ -559,6 +684,7 @@ class MainScene extends Phaser.Scene {
       player.setVelocityY(-350);
       this.score += 2;
       this.updateHud();
+      audio?.chime(660);
     } else if (this.time.now > this.invulnUntil) {
       this.loseLife();
     }
