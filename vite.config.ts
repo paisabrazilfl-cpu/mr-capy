@@ -1,20 +1,25 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   base: './',
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    // The Phaser engine is ~1.2 MB in a single module — a known, irreducible
-    // vendor size. Our app chunk stays ~10 KB, so raise the warning threshold
-    // above the engine size to avoid a false-positive warning on every build.
+    // Phaser (~1.2 MB) and Three.js are known, irreducible vendor sizes; raise
+    // the threshold above them to avoid a false-positive warning every build.
     chunkSizeWarningLimit: 1400,
     rollupOptions: {
+      // Two entry points: the 2D platformer (index.html) and the 3D voxel
+      // world (3d.html). Each loads only the engine it needs.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        '3d': resolve(__dirname, '3d.html'),
+      },
       output: {
-        // Split the Phaser engine into its own long-cacheable chunk so the
-        // app bundle stays small and the chunk-size warning goes away.
         manualChunks: {
           phaser: ['phaser'],
+          three: ['three'],
         },
       },
     },

@@ -90,11 +90,13 @@ test('NPC dialogue starts a quest that completes when its goal is met', async ({
       };
     });
 
-  // Walk right to the first NPC.
+  // Walk right until standing next to the first NPC (poll for robustness
+  // against headless framerate variance).
   await page.keyboard.down('ArrowRight');
-  await page.waitForTimeout(900);
+  await expect
+    .poll(async () => (await read()).near, { timeout: 5000 })
+    .not.toBeNull();
   await page.keyboard.up('ArrowRight');
-  expect((await read()).near).not.toBeNull();
 
   // Talk and walk the dialogue: help -> accept -> close.
   await page.keyboard.press('KeyE');

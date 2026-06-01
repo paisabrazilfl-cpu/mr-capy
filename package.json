@@ -10,7 +10,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "@types/three": "^0.184.1",
+    "phaser": "^3.90.0",
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
