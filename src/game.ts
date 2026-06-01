@@ -258,6 +258,9 @@ class MainScene extends Phaser.Scene {
   private jumpPressedAt = -Infinity;
   private jumpWasDown = false;
 
+  // On-screen touch controls (mobile). Each flag mirrors a held button.
+  private touch = { left: false, right: false, jump: false };
+
   constructor() {
     super('main');
   }
@@ -275,6 +278,7 @@ class MainScene extends Phaser.Scene {
     this.lastGroundedAt = -Infinity;
     this.jumpPressedAt = -Infinity;
     this.jumpWasDown = false;
+    this.touch = { left: false, right: false, jump: false };
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
@@ -288,6 +292,7 @@ class MainScene extends Phaser.Scene {
     this.createColliders();
     this.createInput();
     this.createHud();
+    this.createTouchControls();
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(180, 120);
@@ -414,6 +419,76 @@ class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-P', () => this.togglePause());
   }
 
+  /**
+   * On-screen D-pad + jump button for touch devices. Buttons are fixed to the
+   * camera (HUD layer) and feed the same movement flags as the keyboard, so
+   * gameplay logic stays in one place. They are interactive on all platforms
+   * (harmless with a mouse) but only shown when the device reports touch.
+   */
+  private createTouchControls(): void {
+    const hasTouch = this.sys.game.device.input.touch;
+    if (!hasTouch) return;
+
+    const R = 46; // button radius
+    const margin = 24;
+    const bottom = HEIGHT - margin - R;
+
+    const makeButton = (
+      x: number,
+      label: string,
+      onDown: () => void,
+      onUp: () => void,
+    ): void => {
+      const circle = this.add
+        .circle(x, bottom, R, 0x000000, 0.32)
+        .setScrollFactor(0)
+        .setDepth(40)
+        .setStrokeStyle(3, 0xffffff, 0.6)
+        .setInteractive({ useHandCursor: true });
+      this.add
+        .text(x, bottom, label, {
+          fontFamily: 'monospace',
+          fontSize: '34px',
+          color: '#ffffff',
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(41);
+
+      // pointerup/out also fire if the finger slides off the button.
+      circle.on('pointerdown', onDown);
+      circle.on('pointerup', onUp);
+      circle.on('pointerout', onUp);
+    };
+
+    makeButton(
+      margin + R,
+      '◀',
+      () => (this.touch.left = true),
+      () => (this.touch.left = false),
+    );
+    makeButton(
+      margin + R * 3 + 16,
+      '▶',
+      () => (this.touch.right = true),
+      () => (this.touch.right = false),
+    );
+    makeButton(
+      WIDTH - margin - R,
+      '⤒',
+      () => (this.touch.jump = true),
+      () => (this.touch.jump = false),
+    );
+
+    // Multi-touch so a player can hold a direction and tap jump together.
+    this.input.addPointer(2);
+
+    // Clear held buttons if the game loses focus mid-press.
+    this.game.events.on(Phaser.Core.Events.BLUR, () => {
+      this.touch.left = this.touch.right = this.touch.jump = false;
+    });
+  }
+
   private togglePause(): void {
     if (this.gameEnded) return;
     this.paused = !this.paused;
@@ -441,21 +516,28 @@ class MainScene extends Phaser.Scene {
   }
 
   private createHud(): void {
+    // Rounded translucent panel so the HUD reads cleanly over any background.
+    const panel = this.add.graphics().setScrollFactor(0).setDepth(10);
+    panel.fillStyle(0x0d2b45, 0.55);
+    panel.fillRoundedRect(12, 12, 230, 72, 12);
+    panel.lineStyle(2, 0xffffff, 0.25);
+    panel.strokeRoundedRect(12, 12, 230, 72, 12);
+
     const style: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: 'monospace',
-      fontSize: '24px',
+      fontSize: '22px',
       color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 4,
     };
-    this.scoreText = this.add.text(16, 14, '', style).setScrollFactor(0).setDepth(10);
-    this.livesText = this.add.text(16, 44, '', style).setScrollFactor(0).setDepth(10);
+    this.add.text(28, 24, '🪙', { fontSize: '22px' }).setScrollFactor(0).setDepth(11);
+    this.add.text(28, 52, '❤️', { fontSize: '20px' }).setScrollFactor(0).setDepth(11);
+    this.scoreText = this.add.text(60, 24, '', style).setScrollFactor(0).setDepth(11);
+    this.livesText = this.add.text(60, 52, '', style).setScrollFactor(0).setDepth(11);
     this.updateHud();
   }
 
   private updateHud(): void {
-    this.scoreText.setText(`Coins: ${this.score} / ${this.totalCoins}`);
-    this.livesText.setText(`Lives: ${'♥'.repeat(Math.max(0, this.lives))}`);
+    this.scoreText.setText(`${this.score} / ${this.totalCoins}`);
+    this.livesText.setText(`${'♥'.repeat(Math.max(0, this.lives))}${'·'.repeat(Math.max(0, 3 - this.lives))}`);
   }
 
   private collectCoin: Phaser.Types.Physics.Arcade.ArcadePhysicsCallback = (_p, c) => {
@@ -563,10 +645,13 @@ class MainScene extends Phaser.Scene {
     const onGround = this.player.body!.blocked.down || this.player.body!.touching.down;
     if (onGround) this.lastGroundedAt = time;
 
-    const left = this.cursors.left.isDown || this.keys.left.isDown;
-    const right = this.cursors.right.isDown || this.keys.right.isDown;
+    const left = this.cursors.left.isDown || this.keys.left.isDown || this.touch.left;
+    const right = this.cursors.right.isDown || this.keys.right.isDown || this.touch.right;
     const jumpDown =
-      this.cursors.up.isDown || this.cursors.space.isDown || this.keys.jump.isDown;
+      this.cursors.up.isDown ||
+      this.cursors.space.isDown ||
+      this.keys.jump.isDown ||
+      this.touch.jump;
 
     // Record the moment of a fresh jump press (rising edge) for buffering.
     if (jumpDown && !this.jumpWasDown) this.jumpPressedAt = time;
@@ -644,15 +729,31 @@ const config: Phaser.Types.Core.GameConfig = {
     arcade: { gravity: { x: 0, y: 1200 }, debug: false },
   },
   scale: {
+    // FIT keeps the 4:3 play area centered and crisp; expandParent + the
+    // full-viewport #game container make it auto-resize across phone, tablet
+    // and desktop, and re-fit on orientation change / window resize.
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: WIDTH,
     height: HEIGHT,
+    expandParent: true,
   },
   scene: [MainScene],
 };
 
 const game = new Phaser.Game(config);
+
+// Hide the HTML pre-boot loader once the first scene is ready.
+game.events.once(Phaser.Core.Events.READY, () => {
+  const loader = document.getElementById('loader');
+  if (loader) {
+    loader.classList.add('hidden');
+    setTimeout(() => loader.remove(), 500);
+  }
+});
+
+// Keep the canvas matched to the viewport on resize / rotate.
+window.addEventListener('resize', () => game.scale.refresh());
 
 // Expose the instance for smoke tests / debugging.
 (window as unknown as { game: Phaser.Game }).game = game;

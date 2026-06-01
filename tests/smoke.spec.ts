@@ -15,8 +15,8 @@ test('Mr. Capy boots, renders a canvas, and runs without console errors', async 
 
   await page.goto('/');
 
-  // Title shell from index.html is present.
-  await expect(page.locator('h1')).toContainText('Mr. Capy');
+  // Branding lives in the document title (the full-bleed UI has no <h1>).
+  await expect(page).toHaveTitle(/Mr\. Capy/);
 
   // Phaser injects a <canvas> once the game boots.
   const canvas = page.locator('canvas');
