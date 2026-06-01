@@ -76,6 +76,34 @@ Render deploy on every push to `main`. It requires two repository secrets
 The workflow fails loudly if either secret is missing — it never deploys with
 hard-coded or pasted credentials.
 
+## NPCs, dialogue & quests
+
+Walk up to a villager (the bobbing **!** marks them) and press **▲ / W / E** to
+talk. Each NPC has a branching **multiple-choice** dialogue tree; replies can
+start quests, award coins, or branch further. Active quests show top-right and
+auto-complete when their goal is met (collect coins, bounce a critter, reach the
+flag).
+
+Dialogue and quests are **data-driven** — see `DIALOGUES` and `QUESTS` in
+`src/game.ts`. Adding an NPC is just another entry in `LEVEL.npcs` plus a tree.
+
+### Optional: LLM-powered NPC replies (secure)
+
+NPC lines can be generated live instead of scripted. **Never put an API key in
+this client bundle** — it ships to every visitor. Instead, run a small backend
+that holds the key as a server-side env var and exposes one endpoint the game
+calls:
+
+```
+POST /api/npc   { npc, history } ->  { reply, choices }
+   server adds:  Authorization: Bearer $BITDEER_API_KEY  (env var, never in git)
+   forwards to:  https://api-inference.bitdeer.ai/v1/chat/completions
+```
+
+The game would `fetch('/api/npc', …)` and render the returned `choices` with the
+existing dialogue UI. This requires a web-service deploy (the current Render
+config is a static site), so it is intentionally **not wired into the client**.
+
 ## Tech
 
 - **Phaser 3.90** — arcade physics, camera follow, tweened animations

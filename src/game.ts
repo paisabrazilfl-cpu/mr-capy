@@ -48,10 +48,53 @@ class TextureFactory {
     this.coin();
     this.enemy();
     this.flag();
+    this.npc('npc-sage', 0x6d8c3a, 0x4e6627); // a wise frog-ish villager
+    this.npc('npc-merchant', 0xc06fa8, 0x8c4a78); // a friendly merchant
+    this.npc('npc-explorer', 0x3a7bd5, 0x2a5aa0); // an explorer pal
+    this.exclaim();
     this.capy('capy-idle', 0);
     this.capy('capy-walk-a', 4);
     this.capy('capy-walk-b', -4);
     this.capy('capy-jump', 0, true);
+  }
+
+  /** A small standing villager NPC (rounded body, eyes, little feet). */
+  private npc(key: string, body: number, dark: number): void {
+    const g = this.g();
+    g.fillStyle(dark, 1);
+    g.fillRoundedRect(4, 10, 40, 38, 12);
+    g.fillStyle(body, 1);
+    g.fillRoundedRect(6, 8, 36, 36, 12);
+    // eyes
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(18, 22, 6);
+    g.fillCircle(30, 22, 6);
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(18, 23, 3);
+    g.fillCircle(30, 23, 3);
+    // smile
+    g.lineStyle(2, 0x000000, 0.6);
+    g.beginPath();
+    g.arc(24, 30, 7, 0.15 * Math.PI, 0.85 * Math.PI);
+    g.strokePath();
+    // feet
+    g.fillStyle(dark, 1);
+    g.fillRect(12, 46, 9, 5);
+    g.fillRect(27, 46, 9, 5);
+    g.generateTexture(key, 48, 52);
+    g.destroy();
+  }
+
+  /** A bobbing "!" bubble shown above an NPC you can talk to. */
+  private exclaim(): void {
+    const g = this.g();
+    g.fillStyle(0xffffff, 1);
+    g.fillRoundedRect(0, 0, 22, 28, 6);
+    g.fillStyle(0xffd54a, 1);
+    g.fillRect(9, 5, 4, 12);
+    g.fillRect(9, 20, 4, 4);
+    g.generateTexture('exclaim', 22, 28);
+    g.destroy();
   }
 
   private cloud(): void {
@@ -182,13 +225,176 @@ class TextureFactory {
   }
 }
 
-/** Level layout data: ground gaps, floating platforms, coins, enemies. */
+/** Level layout data: ground gaps, floating platforms, coins, enemies, NPCs. */
 interface LevelData {
   groundGaps: Array<[number, number]>; // [startX, endX] gaps with no ground
   platforms: Array<[number, number, number]>; // x, y, widthInTiles
   coins: Array<[number, number]>;
   enemies: Array<[number, number, number]>; // x, y, patrolRange
+  npcs: NpcPlacement[];
 }
+
+/** Where an NPC stands and which dialogue tree it uses. */
+interface NpcPlacement {
+  x: number;
+  texture: string;
+  name: string;
+  tree: string; // key into DIALOGUES
+}
+
+/** One selectable answer in a dialogue node. */
+interface DialogueChoice {
+  text: string;
+  next?: string; // node id to jump to, or undefined to close
+  give?: string; // quest id to start
+  complete?: string; // quest id to mark complete
+  reward?: number; // coins awarded
+}
+
+/** A single screen of NPC speech plus the player's multiple-choice replies. */
+interface DialogueNode {
+  speaker: string;
+  text: string;
+  choices: DialogueChoice[];
+}
+
+type DialogueTree = Record<string, DialogueNode>;
+
+/** A quest the player can track. */
+interface Quest {
+  id: string;
+  title: string;
+  summary: string;
+}
+
+const QUESTS: Record<string, Quest> = {
+  coins5: {
+    id: 'coins5',
+    title: 'Shiny Beginnings',
+    summary: 'Collect 5 coins for the Sage.',
+  },
+  reachFlag: {
+    id: 'reachFlag',
+    title: 'To the Horizon',
+    summary: 'Reach the flag at the end of the trail.',
+  },
+  stomp1: {
+    id: 'stomp1',
+    title: 'Brave Capy',
+    summary: 'Bounce on a grumpy critter.',
+  },
+};
+
+/**
+ * Branching multiple-choice dialogue trees. Each NPC points at one tree; nodes
+ * link via choice.next, so trees can be as exhaustive as we like. NPC lines can
+ * later be swapped for live LLM responses behind a backend (see README).
+ */
+const DIALOGUES: Record<string, DialogueTree> = {
+  sage: {
+    start: {
+      speaker: 'Sage Pebble',
+      text: 'Welcome, little wanderer! These meadows hold more than they show. What brings you here?',
+      choices: [
+        { text: 'I want adventure!', next: 'adventure' },
+        { text: 'Do you need any help?', next: 'quest' },
+        { text: 'Just passing through.', next: 'bye' },
+      ],
+    },
+    adventure: {
+      speaker: 'Sage Pebble',
+      text: 'Ha! Then you have come to the right meadow. Gather courage — and coins. Shiny things open shiny doors.',
+      choices: [
+        { text: 'Got a task for me?', next: 'quest' },
+        { text: 'Maybe later.', next: 'bye' },
+      ],
+    },
+    quest: {
+      speaker: 'Sage Pebble',
+      text: 'Bring me 5 coins and I shall bless your journey. Will you?',
+      choices: [
+        { text: 'I accept the quest.', give: 'coins5', next: 'accepted' },
+        { text: 'Not right now.', next: 'bye' },
+      ],
+    },
+    accepted: {
+      speaker: 'Sage Pebble',
+      text: 'Wonderful! Find five coins along the trail and return to me.',
+      choices: [{ text: "I'm on it!" }],
+    },
+    bye: {
+      speaker: 'Sage Pebble',
+      text: 'May the wind be soft beneath your paws.',
+      choices: [{ text: 'Farewell.' }],
+    },
+  },
+  merchant: {
+    start: {
+      speaker: 'Mira the Merchant',
+      text: 'Step right up! Tales, trinkets, and a tip or two. Care for a quest?',
+      choices: [
+        { text: 'Tell me a tip.', next: 'tip' },
+        { text: 'Give me a quest!', next: 'quest' },
+        { text: 'No thanks.', next: 'bye' },
+      ],
+    },
+    tip: {
+      speaker: 'Mira the Merchant',
+      text: 'Jump on the grumpy critters — do not run into them! A well-timed hop turns danger into delight.',
+      choices: [
+        { text: 'Any quests?', next: 'quest' },
+        { text: 'Thanks!', next: 'bye' },
+      ],
+    },
+    quest: {
+      speaker: 'Mira the Merchant',
+      text: 'Show me your courage: bounce on a critter and I will reward you handsomely.',
+      choices: [
+        { text: 'Consider it done.', give: 'stomp1', next: 'accepted' },
+        { text: 'Too scary!', next: 'bye' },
+      ],
+    },
+    accepted: {
+      speaker: 'Mira the Merchant',
+      text: 'Brave heart! Come back once you have shown that critter who is boss.',
+      choices: [{ text: 'I will!' }],
+    },
+    bye: {
+      speaker: 'Mira the Merchant',
+      text: 'Safe travels, friend!',
+      choices: [{ text: 'Bye!' }],
+    },
+  },
+  explorer: {
+    start: {
+      speaker: 'Captain Fern',
+      text: 'Ahoy, fellow explorer! The flag at the trail’s end marks true adventurers. Race you there?',
+      choices: [
+        { text: 'Accept the challenge!', give: 'reachFlag', next: 'accepted' },
+        { text: 'What is beyond it?', next: 'lore' },
+        { text: 'Later, Captain.', next: 'bye' },
+      ],
+    },
+    lore: {
+      speaker: 'Captain Fern',
+      text: 'Beyond the flag lie meadows unmapped — twelve realms, they say, each stranger than the last.',
+      choices: [
+        { text: 'Then I must reach it!', give: 'reachFlag', next: 'accepted' },
+        { text: 'Fascinating. Bye.', next: 'bye' },
+      ],
+    },
+    accepted: {
+      speaker: 'Captain Fern',
+      text: 'That’s the spirit! Plant your paws on that flag and glory is yours.',
+      choices: [{ text: 'Onward!' }],
+    },
+    bye: {
+      speaker: 'Captain Fern',
+      text: 'The horizon waits whenever you’re ready.',
+      choices: [{ text: 'See you, Captain.' }],
+    },
+  },
+};
 
 const LEVEL: LevelData = {
   groundGaps: [
@@ -227,6 +433,11 @@ const LEVEL: LevelData = {
     [1080, 350, 120],
     [2020, 270, 160],
     [2700, 450, 200],
+  ],
+  npcs: [
+    { x: 240, texture: 'npc-sage', name: 'Sage Pebble', tree: 'sage' },
+    { x: 1180, texture: 'npc-merchant', name: 'Mira the Merchant', tree: 'merchant' },
+    { x: 2360, texture: 'npc-explorer', name: 'Captain Fern', tree: 'explorer' },
   ],
 };
 
@@ -358,6 +569,19 @@ class MainScene extends Phaser.Scene {
   // On-screen touch controls (mobile). Each flag mirrors a held button.
   private touch = { left: false, right: false, jump: false };
 
+  // Quest + dialogue state.
+  private npcs!: Phaser.Physics.Arcade.StaticGroup;
+  private nearNpc?: Phaser.Physics.Arcade.Sprite;
+  private inDialogue = false;
+  private dialogueLayer?: Phaser.GameObjects.Container;
+  private activeTree?: DialogueTree;
+  private activeNodeId = 'start';
+  private talkHint?: Phaser.GameObjects.Text;
+  private questText!: Phaser.GameObjects.Text;
+  private readonly activeQuests = new Set<string>();
+  private readonly doneQuests = new Set<string>();
+  private stomped = false; // tracks the "bounce on a critter" quest
+
   constructor() {
     super('main');
   }
@@ -376,6 +600,11 @@ class MainScene extends Phaser.Scene {
     this.jumpPressedAt = -Infinity;
     this.jumpWasDown = false;
     this.touch = { left: false, right: false, jump: false };
+    this.inDialogue = false;
+    this.nearNpc = undefined;
+    this.stomped = false;
+    this.activeQuests.clear();
+    this.doneQuests.clear();
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
@@ -385,6 +614,7 @@ class MainScene extends Phaser.Scene {
     this.createPlayer();
     this.createCoins();
     this.createEnemies();
+    this.createNpcs();
     this.createGoal();
     this.createColliders();
     this.createInput();
@@ -507,6 +737,32 @@ class MainScene extends Phaser.Scene {
     }
   }
 
+  private createNpcs(): void {
+    this.npcs = this.physics.add.staticGroup();
+    for (const placement of LEVEL.npcs) {
+      const npc = this.npcs.create(
+        placement.x,
+        HEIGHT - TILE - 26,
+        placement.texture,
+      ) as Phaser.Physics.Arcade.Sprite;
+      npc.setData('name', placement.name);
+      npc.setData('tree', placement.tree);
+      npc.refreshBody();
+
+      // Floating "!" so the player knows this NPC has something to say.
+      const mark = this.add.image(placement.x, HEIGHT - TILE - 70, 'exclaim');
+      this.tweens.add({
+        targets: mark,
+        y: mark.y - 8,
+        duration: 600,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.inOut',
+      });
+      npc.setData('mark', mark);
+    }
+  }
+
   private createGoal(): void {
     this.goal = this.physics.add.staticImage(WORLD_WIDTH - 80, HEIGHT - TILE - 48, 'flag');
     this.goal.setScale(1.4);
@@ -538,6 +794,15 @@ class MainScene extends Phaser.Scene {
     };
     this.input.keyboard!.on('keydown-R', () => this.scene.restart());
     this.input.keyboard!.on('keydown-P', () => this.togglePause());
+    // Talk to a nearby NPC (E or up/space when standing next to one).
+    this.input.keyboard!.on('keydown-E', () => this.tryTalk());
+
+    // Number keys pick a dialogue choice; clicking a choice also works.
+    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => {
+      if (!this.inDialogue) return;
+      const n = parseInt(ev.key, 10);
+      if (!Number.isNaN(n) && n >= 1) this.pickChoice(n - 1);
+    });
   }
 
   /**
@@ -631,12 +896,38 @@ class MainScene extends Phaser.Scene {
     this.add.text(28, 52, '❤️', { fontSize: '20px' }).setScrollFactor(0).setDepth(11);
     this.scoreText = this.add.text(60, 24, '', style).setScrollFactor(0).setDepth(11);
     this.livesText = this.add.text(60, 52, '', style).setScrollFactor(0).setDepth(11);
+
+    // Active-quest tracker, top-right.
+    this.questText = this.add
+      .text(WIDTH - 60, 18, '', {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        color: '#ffe082',
+        align: 'right',
+        stroke: '#0d2b45',
+        strokeThickness: 3,
+        wordWrap: { width: 300 },
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(11);
+
     this.updateHud();
+    this.updateQuestHud();
   }
 
   private updateHud(): void {
     this.scoreText.setText(`${this.score} / ${this.totalCoins}`);
     this.livesText.setText(`${'♥'.repeat(Math.max(0, this.lives))}${'·'.repeat(Math.max(0, 3 - this.lives))}`);
+  }
+
+  private updateQuestHud(): void {
+    const lines = [...this.activeQuests].map((id) => {
+      const q = QUESTS[id];
+      const done = this.doneQuests.has(id);
+      return `${done ? '✔' : '◔'} ${q.title}`;
+    });
+    this.questText.setText(lines.length ? `QUESTS\n${lines.join('\n')}` : '');
   }
 
   private collectCoin: Phaser.Types.Physics.Arcade.ArcadePhysicsCallback = (_p, c) => {
@@ -660,6 +951,7 @@ class MainScene extends Phaser.Scene {
       this.score += 2;
       this.updateHud();
       audio?.chime(660);
+      this.stomped = true; // progresses Mira's "bounce on a critter" quest
     } else if (this.time.now > this.invulnUntil) {
       this.loseLife();
     }
@@ -690,8 +982,10 @@ class MainScene extends Phaser.Scene {
 
   private reachGoal: Phaser.Types.Physics.Arcade.ArcadePhysicsCallback = () => {
     if (this.gameEnded) return;
+    if (this.activeQuests.has('reachFlag')) this.completeQuest('reachFlag');
+    const questsDone = this.doneQuests.size;
     const bonus = this.score === this.totalCoins ? '  PERFECT!' : '';
-    this.endGame(`YOU WIN!${bonus}`, '#69f0ae');
+    this.endGame(`YOU WIN!${bonus}\nQuests done: ${questsDone}/3`, '#69f0ae');
   };
 
   private endGame(message: string, color: string): void {
@@ -733,7 +1027,18 @@ class MainScene extends Phaser.Scene {
   }
 
   update(time: number): void {
-    if (this.gameEnded || this.paused) return;
+    if (this.gameEnded) return;
+
+    // While talking, freeze the hero and run no gameplay logic.
+    if (this.inDialogue) {
+      this.player.setVelocityX(0);
+      this.player.anims.play('idle', true);
+      return;
+    }
+    if (this.paused) return;
+
+    this.updateNpcProximity();
+    this.checkQuestProgress();
 
     // Fell into a pit.
     if (this.player.y > HEIGHT + 40) {
@@ -753,6 +1058,14 @@ class MainScene extends Phaser.Scene {
       this.cursors.space.isDown ||
       this.keys.jump.isDown ||
       this.touch.jump;
+
+    // Standing next to an NPC, a fresh "up" press starts a chat instead of a
+    // jump (the talk hint tells the player). E also works (see createInput).
+    if (jumpDown && !this.jumpWasDown && this.nearNpc && onGround) {
+      this.jumpWasDown = jumpDown;
+      this.tryTalk();
+      return;
+    }
 
     // Record the moment of a fresh jump press (rising edge) for buffering.
     if (jumpDown && !this.jumpWasDown) this.jumpPressedAt = time;
@@ -789,6 +1102,163 @@ class MainScene extends Phaser.Scene {
     }
 
     this.updateEnemies();
+  }
+
+  // ---- NPC dialogue + quests -------------------------------------------
+
+  /** Highlights the nearest NPC in range and shows a "talk" hint. */
+  private updateNpcProximity(): void {
+    if (this.inDialogue) return;
+    let closest: Phaser.Physics.Arcade.Sprite | undefined;
+    let bestDist = 70; // interaction radius
+    this.npcs.children.iterate((child) => {
+      const npc = child as Phaser.Physics.Arcade.Sprite;
+      const d = Math.abs(npc.x - this.player.x);
+      if (d < bestDist) {
+        bestDist = d;
+        closest = npc;
+      }
+      return true;
+    });
+    this.nearNpc = closest;
+
+    if (closest && !this.talkHint) {
+      this.talkHint = this.add
+        .text(WIDTH / 2, HEIGHT - 30, '▲ / E  —  Talk', {
+          fontFamily: 'monospace',
+          fontSize: '20px',
+          color: '#ffffff',
+          backgroundColor: '#0d2b45cc',
+          padding: { x: 10, y: 6 },
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(35);
+    } else if (!closest && this.talkHint) {
+      this.talkHint.destroy();
+      this.talkHint = undefined;
+    }
+  }
+
+  /** Open dialogue with the nearby NPC, if any. */
+  private tryTalk(): void {
+    if (this.inDialogue || this.gameEnded || this.paused || !this.nearNpc) return;
+    const tree = DIALOGUES[this.nearNpc.getData('tree') as string];
+    if (!tree) return;
+    this.inDialogue = true;
+    this.player.setVelocityX(0);
+    this.activeTree = tree;
+    this.activeNodeId = 'start';
+    this.talkHint?.destroy();
+    this.talkHint = undefined;
+    this.renderDialogueNode();
+  }
+
+  /** Draw the current dialogue node: speech box + numbered choices. */
+  private renderDialogueNode(): void {
+    this.dialogueLayer?.destroy();
+    const node = this.activeTree?.[this.activeNodeId];
+    if (!node) {
+      this.closeDialogue();
+      return;
+    }
+
+    const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(50);
+
+    const boxH = 200;
+    const boxY = HEIGHT - boxH - 16;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0d2b45, 0.92);
+    bg.fillRoundedRect(24, boxY, WIDTH - 48, boxH, 14);
+    bg.lineStyle(3, 0xffffff, 0.3);
+    bg.strokeRoundedRect(24, boxY, WIDTH - 48, boxH, 14);
+    layer.add(bg);
+
+    layer.add(
+      this.add.text(44, boxY + 14, node.speaker, {
+        fontFamily: 'monospace',
+        fontSize: '20px',
+        color: '#ffe082',
+      }),
+    );
+    layer.add(
+      this.add.text(44, boxY + 44, node.text, {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#ffffff',
+        wordWrap: { width: WIDTH - 100 },
+      }),
+    );
+
+    node.choices.forEach((choice, i) => {
+      const y = boxY + 110 + i * 28;
+      const label = this.add
+        .text(56, y, `${i + 1}. ${choice.text}`, {
+          fontFamily: 'monospace',
+          fontSize: '17px',
+          color: '#9ad9ff',
+        })
+        .setInteractive({ useHandCursor: true });
+      label.on('pointerover', () => label.setColor('#ffffff'));
+      label.on('pointerout', () => label.setColor('#9ad9ff'));
+      label.on('pointerdown', () => this.pickChoice(i));
+      layer.add(label);
+    });
+
+    this.dialogueLayer = layer;
+  }
+
+  /** Apply a chosen reply: rewards/quests, then advance or close. */
+  private pickChoice(index: number): void {
+    if (!this.inDialogue) return;
+    const node = this.activeTree?.[this.activeNodeId];
+    const choice = node?.choices[index];
+    if (!node || !choice) return;
+
+    if (choice.give && !this.doneQuests.has(choice.give)) {
+      this.activeQuests.add(choice.give);
+      this.updateQuestHud();
+    }
+    if (choice.complete) this.completeQuest(choice.complete);
+    if (choice.reward) {
+      this.score += choice.reward;
+      this.updateHud();
+      audio?.chime(990);
+    }
+
+    if (choice.next) {
+      this.activeNodeId = choice.next;
+      this.renderDialogueNode();
+    } else {
+      this.closeDialogue();
+    }
+  }
+
+  private completeQuest(id: string): void {
+    if (this.doneQuests.has(id)) return;
+    this.doneQuests.add(id);
+    this.activeQuests.add(id);
+    this.score += 3;
+    this.updateHud();
+    this.updateQuestHud();
+    audio?.chime(1180);
+  }
+
+  private closeDialogue(): void {
+    this.dialogueLayer?.destroy();
+    this.dialogueLayer = undefined;
+    this.inDialogue = false;
+    this.activeTree = undefined;
+  }
+
+  /** Auto-complete quests whose goals have been met out in the world. */
+  private checkQuestProgress(): void {
+    if (this.activeQuests.has('coins5') && !this.doneQuests.has('coins5') && this.score >= 5) {
+      this.completeQuest('coins5');
+    }
+    if (this.activeQuests.has('stomp1') && !this.doneQuests.has('stomp1') && this.stomped) {
+      this.completeQuest('stomp1');
+    }
   }
 
   private updateEnemies(): void {

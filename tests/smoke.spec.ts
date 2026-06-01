@@ -59,3 +59,63 @@ test('Mr. Capy boots, renders a canvas, and runs without console errors', async 
 
   expect(errors).toEqual([]);
 });
+
+/**
+ * Quest/dialogue smoke test: walk to the first NPC, open the multiple-choice
+ * dialogue, accept a quest, and confirm it auto-completes when its goal is met.
+ */
+test('NPC dialogue starts a quest that completes when its goal is met', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/');
+  await page.waitForTimeout(1200);
+
+  type Probe = {
+    inDialogue: boolean;
+    near: string | null;
+    active: string[];
+    done: string[];
+  };
+  const read = () =>
+    page.evaluate((): Probe => {
+      // @ts-expect-error test-only globals
+      const s = window.game.scene.keys.main;
+      return {
+        inDialogue: s.inDialogue,
+        near: s.nearNpc ? s.nearNpc.getData('name') : null,
+        active: [...s.activeQuests],
+        done: [...s.doneQuests],
+      };
+    });
+
+  // Walk right to the first NPC.
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(900);
+  await page.keyboard.up('ArrowRight');
+  expect((await read()).near).not.toBeNull();
+
+  // Talk and walk the dialogue: help -> accept -> close.
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(250);
+  expect((await read()).inDialogue).toBe(true);
+  await page.keyboard.press('2');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('1');
+  await page.waitForTimeout(200);
+  expect((await read()).active).toContain('coins5');
+  await page.keyboard.press('1');
+  await page.waitForTimeout(200);
+  expect((await read()).inDialogue).toBe(false);
+
+  // Meet the goal -> quest auto-completes.
+  await page.evaluate(() => {
+    // @ts-expect-error test-only globals
+    window.game.scene.keys.main.score = 5;
+  });
+  await page.waitForTimeout(300);
+  expect((await read()).done).toContain('coins5');
+
+  expect(errors, errors.join(' | ')).toEqual([]);
+});
